@@ -28,6 +28,8 @@ constexpr uint8_t OLED_SCL = 18;
 
 constexpr uint8_t LED_W = 38;
 constexpr uint8_t LED_C = 39;
+constexpr uint8_t K210_UART_RX = 47; // ESP RX <- K210 TX
+constexpr uint8_t K210_UART_TX = 48; // ESP TX -> K210 RX
 } // namespace Pins
 
 namespace Pwm {
@@ -46,4 +48,3 @@ constexpr const char *PASSWORD = "72779673";
 constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
 } // namespace Wifi
 } // namespace AppConfig
-

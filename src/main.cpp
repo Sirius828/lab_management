@@ -8,6 +8,7 @@
 #include "env_manager.h"
 #include "io_manager.h"
 #include "logger.h"
+#include "uart_manager.h"
 #include "web_manager.h"
 
 namespace {
@@ -50,6 +51,8 @@ void setup() {
   DisplayManager::begin();
   Logger::logPrintf("[BOOT] oled ok\n");
 
+  UartManager::begin();
+
   WebManager::connectWifi();
   WebManager::begin();
 
@@ -66,6 +69,7 @@ void loop() {
 
   WebManager::maintain();
   WebManager::handleClient();
+  UartManager::update();
 
   if (millis() - lastTick < 100) {
     return;
@@ -81,7 +85,9 @@ void loop() {
   }
 
   const EnvSnapshot env = EnvManager::snapshot();
+  const FaceEventSnapshot face = UartManager::latestFaceEvent();
   WebManager::updateStatus(input, env);
+  WebManager::updateFaceEvent(face);
 
   if (millis() - lastOledUpdate >= 200) {
     DisplayManager::render(

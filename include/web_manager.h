@@ -10,6 +10,7 @@ void begin();
 void handleClient();
 void maintain();
 void updateStatus(const InputSnapshot &input, const EnvSnapshot &env);
+void updateFaceEvent(const FaceEventSnapshot &face);
 String ip();
 String currentTimeString();
 bool isTimeSynced();

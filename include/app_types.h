@@ -22,3 +22,13 @@ struct LightState {
   uint8_t brightness = 128; // 0..255
   uint8_t warmth = 128;     // 0..255, 255=全暖 0=全冷
 };
+
+struct FaceEventSnapshot {
+  bool online = false;
+  bool hasEvent = false;
+  bool known = false;
+  int personId = -1;
+  float score = 0.0f;
+  uint32_t timestampMs = 0;
+  char label[32] = {0};
+};

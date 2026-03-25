@@ -13,6 +13,7 @@ WebServer server(80);
 String wifiIp = "0.0.0.0";
 InputSnapshot latestInput;
 EnvSnapshot latestEnv;
+FaceEventSnapshot latestFace;
 bool serverStarted = false;
 uint32_t lastReconnectAttemptMs = 0;
 bool ntpSynced = false;
@@ -94,6 +95,7 @@ bool connectWifiInternal(const String &ssid, const String &password, bool update
 
 void handleRoot() {
   Logger::logPrintf("[HTTP] / from %s\n", server.client().remoteIP().toString().c_str());
+  const String pageVersion = String(__DATE__) + " " + String(__TIME__);
   String html = R"HTML(
 <!doctype html>
 <html lang="zh-CN">
@@ -205,6 +207,17 @@ void handleRoot() {
         </div>
       </section>
 
+      <section class="card">
+        <div class="card-h">FACE (K210)</div>
+        <div class="card-b">
+          <div class="kv"><span>Link</span><strong id="f_link">OFFLINE</strong></div>
+          <div class="kv"><span>Result</span><strong id="f_result">--</strong></div>
+          <div class="kv"><span>ID</span><strong id="f_id">--</strong></div>
+          <div class="kv"><span>Score</span><strong id="f_score">--</strong></div>
+          <div class="kv"><span>Last(ms)</span><strong id="f_last">--</strong></div>
+        </div>
+      </section>
+
       <section class="card" style="grid-column: 1 / -1;">
         <div class="card-h">LIGHT CONTROL</div>
         <div class="card-b">
@@ -222,7 +235,9 @@ void handleRoot() {
     </div>
 
     <div class="links">
+      ver: __VER__ <br>
       <a href="/api/status">/api/status</a> |
+      <a href="/api/face/last">/api/face/last</a> |
       <a href="/ping">/ping</a>
     </div>
   </div>
@@ -252,6 +267,20 @@ void handleRoot() {
       document.getElementById('fire').textContent = j.fire ?? 0;
       document.getElementById('human').textContent = j.human ?? 0;
       document.getElementById('keys').textContent = `${j.k1 ?? 0} ${j.k2 ?? 0} ${j.k3 ?? 0} ${j.k4 ?? 0}`;
+      document.getElementById('f_link').textContent = (j.face_online ? 'ONLINE' : 'OFFLINE');
+      if (j.face_has_event) {
+        document.getElementById('f_result').textContent = j.face_known ? (j.face_label || 'KNOWN') : 'UNKNOWN';
+        document.getElementById('f_id').textContent = j.face_known ? (j.face_id ?? '--') : '--';
+        const score = Number(j.face_score ?? 0);
+        document.getElementById('f_score').textContent = Number.isFinite(score) ? score.toFixed(1) : '--';
+        const age = Math.max(0, Number(j.uptime_ms ?? 0) - Number(j.face_ts_ms ?? 0));
+        document.getElementById('f_last').textContent = Number.isFinite(age) ? String(age) : '--';
+      } else {
+        document.getElementById('f_result').textContent = '--';
+        document.getElementById('f_id').textContent = '--';
+        document.getElementById('f_score').textContent = '--';
+        document.getElementById('f_last').textContent = '--';
+      }
 
       const sb = j.light_brightness ?? 128;
       const sw = j.light_warmth ?? 128;
@@ -289,6 +318,10 @@ void handleRoot() {
 </html>
 )HTML";
   html.replace("__IP__", wifiIp);
+  html.replace("__VER__", pageVersion);
+  server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  server.sendHeader("Pragma", "no-cache");
+  server.sendHeader("Expires", "0");
   server.send(200, "text/html; charset=utf-8", html);
 }
 
@@ -302,6 +335,14 @@ void handleStatusApi() {
   json += "\"k2\":" + String(latestInput.key2Pressed ? 1 : 0) + ",";
   json += "\"k3\":" + String(latestInput.key3Pressed ? 1 : 0) + ",";
   json += "\"k4\":" + String(latestInput.key4Pressed ? 1 : 0) + ",";
+  json += "\"face_online\":" + String(latestFace.online ? 1 : 0) + ",";
+  json += "\"face_has_event\":" + String(latestFace.hasEvent ? 1 : 0) + ",";
+  json += "\"face_known\":" + String(latestFace.known ? 1 : 0) + ",";
+  json += "\"face_id\":" + String(latestFace.personId) + ",";
+  json += "\"face_score\":" + String(latestFace.score, 1) + ",";
+  json += "\"face_label\":\"" + String(latestFace.label) + "\",";
+  json += "\"face_ts_ms\":" + String(latestFace.timestampMs) + ",";
+  json += "\"uptime_ms\":" + String(millis()) + ",";
   const LightState ls = IOManager::getLightState();
   json += "\"light_brightness\":" + String(ls.brightness) + ",";
   json += "\"light_warmth\":" + String(ls.warmth) + ",";
@@ -310,6 +351,19 @@ void handleStatusApi() {
   json += "\"temp_c\":" + (isnan(latestEnv.temperatureC) ? String("null") : String(latestEnv.temperatureC, 1)) + ",";
   json += "\"humidity_pct\":" + (isnan(latestEnv.humidityPct) ? String("null") : String(latestEnv.humidityPct, 1)) + ",";
   json += "\"pressure_hpa\":" + (isnan(latestEnv.pressureHpa) ? String("null") : String(latestEnv.pressureHpa, 1));
+  json += "}";
+  server.send(200, "application/json; charset=utf-8", json);
+}
+
+void handleFaceLastApi() {
+  String json = "{";
+  json += "\"online\":" + String(latestFace.online ? 1 : 0) + ",";
+  json += "\"has_event\":" + String(latestFace.hasEvent ? 1 : 0) + ",";
+  json += "\"known\":" + String(latestFace.known ? 1 : 0) + ",";
+  json += "\"id\":" + String(latestFace.personId) + ",";
+  json += "\"score\":" + String(latestFace.score, 1) + ",";
+  json += "\"label\":\"" + String(latestFace.label) + "\",";
+  json += "\"ts_ms\":" + String(latestFace.timestampMs);
   json += "}";
   server.send(200, "application/json; charset=utf-8", json);
 }
@@ -361,6 +415,7 @@ void begin() {
   }
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/status", HTTP_GET, handleStatusApi);
+  server.on("/api/face/last", HTTP_GET, handleFaceLastApi);
   server.on("/api/light/set", HTTP_GET, handleLightSet);
   server.on("/ping", HTTP_GET, handlePing);
   server.onNotFound([]() {
@@ -408,6 +463,10 @@ void maintain() {
 void updateStatus(const InputSnapshot &input, const EnvSnapshot &env) {
   latestInput = input;
   latestEnv = env;
+}
+
+void updateFaceEvent(const FaceEventSnapshot &face) {
+  latestFace = face;
 }
 
 String ip() {
